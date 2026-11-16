@@ -1,0 +1,29 @@
+
+23. Printing statistics.
+
+=== mips_cpu ===
+
+   Number of wires:               1252
+   Number of wire bits:           6499
+   Number of public wires:         134
+   Number of public wire bits:    2437
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               3428
+     BUFG                            1
+     CARRY4                         38
+     FDRE                         1014
+     FDSE                           10
+     IBUF                           67
+     INV                            63
+     LUT1                          120
+     LUT2                          139
+     LUT3                          219
+     LUT4                          219
+     LUT5                          199
+     LUT6                          763
+     MUXF7                         297
+     MUXF8                          78
+     OBUF                          201
+
