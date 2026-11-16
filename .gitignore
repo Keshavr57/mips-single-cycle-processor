@@ -1,0 +1,10 @@
+sim/
+programs/build/
+*.vvp
+*.vcd
+report/*.aux
+report/*.log
+report/*.out
+report/main.pdf
+synth/yosys.log
+__pycache__/
