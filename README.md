@@ -7,7 +7,7 @@ A 32-bit single-cycle MIPS processor written in synthesizable Verilog. It runs 2
 | | |
 |---|---|
 | 📄 Phase I IEEE report | [`report/IEEE_Report_Phase1.pdf`](report/IEEE_Report_Phase1.pdf) |
-| 🎥 Prototype demo video | **ADD VIDEO LINK HERE** |
+| 🎥 Prototype demo video |https://drive.google.com/drive/folders/1rhn3lwi_-24imqKGfuRqZ_glGERA07Sn?usp=sharing |
 | 🧭 Datapath diagram | [`docs/images/datapath.png`](docs/images/datapath.png) |
 
 ## Team
