@@ -18,6 +18,13 @@
 `define OP_ORI    6'b001101
 `define OP_XORI   6'b001110
 `define OP_LUI    6'b001111
+`define OP_SPECIAL2 6'b011100  // Phase II: mul
+`define OP_LB     6'b100000  // Phase II
+`define OP_LH     6'b100001  // Phase II
+`define OP_LBU    6'b100100  // Phase II
+`define OP_LHU    6'b100101  // Phase II
+`define OP_SB     6'b101000  // Phase II
+`define OP_SH     6'b101001  // Phase II
 `define OP_LW     6'b100011
 `define OP_SW     6'b101011
 
@@ -36,16 +43,19 @@
 `define F_NOR     6'b100111
 `define F_SLT     6'b101010
 `define F_SLTU    6'b101011
+`define F2_MUL    6'b000010   // SPECIAL2 funct for mul rd, rs, rt
 
 // ---------------- Main-decoder ALUOp (control -> alu_control) -------------
-`define ALUOP_ADD   3'b000   // lw, sw, addi, addiu
-`define ALUOP_SUB   3'b001   // beq, bne
-`define ALUOP_FUNCT 3'b010   // R-type: look at funct
-`define ALUOP_AND   3'b011   // andi
-`define ALUOP_OR    3'b100   // ori
-`define ALUOP_SLT   3'b101   // slti
-`define ALUOP_LUI   3'b110   // lui
-`define ALUOP_XOR   3'b111   // xori
+// Phase II: widened from 3 to 4 bits to make room for MUL.
+`define ALUOP_ADD   4'b0000  // loads, stores, addi, addiu
+`define ALUOP_SUB   4'b0001  // beq, bne
+`define ALUOP_FUNCT 4'b0010  // R-type: look at funct
+`define ALUOP_AND   4'b0011  // andi
+`define ALUOP_OR    4'b0100  // ori
+`define ALUOP_SLT   4'b0101  // slti
+`define ALUOP_LUI   4'b0110  // lui
+`define ALUOP_XOR   4'b0111  // xori
+`define ALUOP_MUL   4'b1000  // mul (SPECIAL2)
 
 // ---------------- ALU operation select (alu_control -> alu) ---------------
 `define ALU_AND   4'b0000
@@ -60,6 +70,12 @@
 `define ALU_LUI   4'b1011
 `define ALU_NOR   4'b1100
 `define ALU_SLTU  4'b1101
+`define ALU_MUL   4'b1110   // Phase II: low 32 bits of a*b
+
+// ---------------- Memory access size (Phase II) ----------------
+`define MEM_BYTE  2'b00
+`define MEM_HALF  2'b01
+`define MEM_WORD  2'b10
 
 // ---------------- Write-back source select ----------------
 `define WB_ALU    2'b00
