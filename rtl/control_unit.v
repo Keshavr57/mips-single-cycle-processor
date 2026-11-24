@@ -18,6 +18,11 @@
 //  j     |  -      -      -        0     0     0     0      0   1    -     -
 //  jal   |  $ra    -      PC+4     1     0     0     0      0   1    -     -
 //  jr    |  -      -      -        0     0     0     0      0   0    -     -  (jr=1)
+//
+// Phase II additions
+//  lb/lbu/lh/lhu | rt imm MEM 1 1 0 ... ALUOp ADD, MemSize BYTE/HALF, MemUnsigned
+//  sb/sh         | -  imm -   0 0 1 ... ALUOp ADD, MemSize BYTE/HALF
+//  mul (SPECIAL2)| rd reg ALU 1 0 0 ... ALUOp MUL
 // ============================================================================
 `include "defines.vh"
 
@@ -35,7 +40,9 @@ module control_unit (
     output reg        jump,
     output reg        jr,
     output reg        zero_ext,
-    output reg  [2:0] alu_op,
+    output reg  [3:0] alu_op,
+    output reg  [1:0] mem_size,     // Phase II: byte / half / word
+    output reg        mem_unsigned, // Phase II: lbu / lhu zero-extend
     output reg        illegal
 );
     always @(*) begin
@@ -52,6 +59,8 @@ module control_unit (
         jr         = 1'b0;
         zero_ext   = 1'b0;
         alu_op     = `ALUOP_ADD;
+        mem_size   = `MEM_WORD;
+        mem_unsigned = 1'b0;
         illegal    = 1'b0;
 
         case (opcode)
@@ -70,6 +79,25 @@ module control_unit (
             end
             `OP_SW: begin
                 alu_src = 1'b1; mem_write = 1'b1;
+            end
+            // ---------------- Phase II: byte / halfword memory ops
+            `OP_LB, `OP_LBU, `OP_LH, `OP_LHU: begin
+                alu_src = 1'b1; mem_to_reg = `WB_MEM;
+                reg_write = 1'b1; mem_read = 1'b1;
+                mem_size     = (opcode == `OP_LB || opcode == `OP_LBU) ? `MEM_BYTE : `MEM_HALF;
+                mem_unsigned = (opcode == `OP_LBU || opcode == `OP_LHU);
+            end
+            `OP_SB, `OP_SH: begin
+                alu_src = 1'b1; mem_write = 1'b1;
+                mem_size = (opcode == `OP_SB) ? `MEM_BYTE : `MEM_HALF;
+            end
+            // ---------------- Phase II: hardware multiply
+            `OP_SPECIAL2: begin
+                if (funct == `F2_MUL) begin
+                    reg_dst = `RD_RD; reg_write = 1'b1; alu_op = `ALUOP_MUL;
+                end else begin
+                    illegal = 1'b1;
+                end
             end
             `OP_BEQ: begin
                 branch = 1'b1; alu_op = `ALUOP_SUB;
