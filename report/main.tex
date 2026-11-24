@@ -13,7 +13,7 @@
 \begin{document}
 
 \title{Design and Verification of a Single-Cycle MIPS32 Processor with a Memory-Mapped Memory Interface in Verilog HDL\\
-{\large Modern Computer Architecture -- Project Report (Phase I)}}
+{\large Modern Computer Architecture -- Final Project Report (Phase II)}}
 
 \author{
 \IEEEauthorblockN{Keshav Rajput}
@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-This report presents the design, implementation and verification of a 32-bit single-cycle processor that executes a subset of the MIPS32 instruction set, together with a dedicated data-side memory interface. The core implements 27 instructions spanning R-type arithmetic, logical and shift operations, immediate arithmetic and logic, \texttt{lw}/\texttt{sw}, \texttt{beq}/\texttt{bne}, and \texttt{j}/\texttt{jal}/\texttt{jr}, which is sufficient to run recursive procedures that use the stack. The memory interface decodes every load/store address and routes it either to a 4~KB data RAM or to memory-mapped I/O registers (an output port, a cycle counter and a halt register). The design is written in synthesizable Verilog as 12 modules, verified with five self-checking unit testbenches and five assembly programs (a full instruction self-test, array sum, maximum search, recursive factorial and bubble sort) using a custom two-pass assembler. All tests pass, every instruction completes in one cycle (CPI~=~1), and a mutation experiment confirms that the self-test detects injected faults. Yosys synthesis for a Xilinx 7-series target maps the core to about 1{,}660 LUTs and 1{,}024 flip-flops.
+This report presents the design, implementation and verification of a 32-bit single-cycle processor that executes a subset of the MIPS32 instruction set, together with a dedicated data-side memory interface. The core implements 34 instructions: R-type arithmetic, logical and shift operations, immediate arithmetic and logic, word, halfword and byte loads and stores (\texttt{lw}, \texttt{lh}, \texttt{lhu}, \texttt{lb}, \texttt{lbu}, \texttt{sw}, \texttt{sh}, \texttt{sb}), a hardware multiply (\texttt{mul}), \texttt{beq}/\texttt{bne}, and \texttt{j}/\texttt{jal}/\texttt{jr}. The memory interface decodes every address, routes it to a 4~KB data RAM or to memory-mapped I/O registers, and performs byte-lane steering, byte enables, sign/zero extension and alignment checking for sub-word accesses. The design is written in synthesizable Verilog as 12 modules and verified with five self-checking unit testbenches and eight assembly programs built with a custom two-pass assembler. All tests pass and every instruction completes in one cycle (CPI~=~1). A performance study using the measured instruction mix shows that the hardware multiplier speeds up recursive factorial by 2.58$\times$, that a multi-cycle implementation would be only 1.06$\times$ faster (average CPI 3.8), and that an ideal five-stage pipeline would be 3.94$\times$ faster. Yosys synthesis for a Xilinx 7-series target maps the core to about 1{,}660 LUTs, 1{,}024 flip-flops and 3 DSP48E1 blocks.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -44,7 +44,7 @@ MIPS, single-cycle processor, datapath, control unit, memory-mapped I/O, Verilog
 \section{Introduction}
 A processor's datapath and control unit are where the instruction set architecture (ISA) meets hardware. Building one from scratch makes the link between an instruction's encoding and the signals that move data between registers, the ALU and memory concrete. The single-cycle organisation, in which each instruction is fetched, decoded, executed and written back within one clock period, is the standard starting point because every instruction's behaviour is visible in a single cycle of the waveform~\cite{patterson}.
 
-The aim of this project is to implement a 32-bit single-cycle MIPS processor that executes arithmetic, memory and branch instructions, and to pair it with an explicit memory interface rather than wiring the data RAM directly into the datapath. The interface introduces address decoding and memory-mapped I/O (MMIO), which is how real processors reach peripherals. Phase~I delivers a working, verified and synthesised core; Phase~II will extend the analysis and results.
+The aim of this project is to implement a 32-bit single-cycle MIPS processor that executes arithmetic, memory and branch instructions, and to pair it with an explicit memory interface rather than wiring the data RAM directly into the datapath. The interface introduces address decoding and memory-mapped I/O (MMIO), which is how real processors reach peripherals. Phase~I delivered a working, verified and synthesised core. Phase~II, reported here, adds sub-word memory access and a hardware multiplier, and evaluates the design through an instruction-mix performance study and a synthesis and critical-path analysis.
 
 \section{Literature Review}
 \textbf{The MIPS architecture.} MIPS grew out of the Stanford MIPS project of Hennessy \textit{et al.}~\cite{hennessy1982}, which argued that a simple, regular instruction set with fixed-length instructions and a load/store memory model lets the hardware be pipelined efficiently and moves complexity into the compiler. The commercial architecture is described by Kane and Heinrich~\cite{kane} and, for the 32-bit ISA used here, by the MIPS32 architecture manual~\cite{mips32}. Its three instruction formats (R, I and J), each 32 bits with the opcode in bits 31--26, make the decoder small, which is why MIPS remains the reference ISA for teaching processor design.
@@ -58,7 +58,7 @@ The aim of this project is to implement a 32-bit single-cycle MIPS processor tha
 \section{Proposed Solution}
 
 \subsection{Supported Instruction Set}
-Table~\ref{tab:isa} lists the 27 implemented instructions. The suggested set in the project brief (R-type, \texttt{lw}, \texttt{sw}, \texttt{beq}, \texttt{addi}, \texttt{j}) is extended with \texttt{bne}, shifts, logical immediates, \texttt{lui}, \texttt{slt(i/u)}, \texttt{jal} and \texttt{jr}. These additions allow realistic programs: \texttt{lui}/\texttt{ori} build 32-bit constants, and \texttt{jal}/\texttt{jr} with \texttt{lw}/\texttt{sw} on \texttt{\$sp} support recursive calls.
+Table~\ref{tab:isa} lists the 34 implemented instructions. The suggested set in the project brief (R-type, \texttt{lw}, \texttt{sw}, \texttt{beq}, \texttt{addi}, \texttt{j}) is extended with \texttt{bne}, shifts, logical immediates, \texttt{lui}, \texttt{slt(i/u)}, \texttt{jal} and \texttt{jr} (Phase~I), and with byte/halfword loads and stores and \texttt{mul} (Phase~II). These additions allow realistic programs: \texttt{lui}/\texttt{ori} build 32-bit constants, \texttt{jal}/\texttt{jr} with the stack support recursion, \texttt{lb}/\texttt{sb} support character strings, and \texttt{mul} replaces a software multiplication loop.
 
 \begin{table}[htbp]
 \caption{Implemented Instructions}
@@ -73,7 +73,8 @@ R (ALU) & add, addu, sub, subu, and, or, xor, nor, slt, sltu \\
 R (shift) & sll, srl, sra \\
 R (jump) & jr \\
 I (ALU) & addi, addiu, andi, ori, xori, slti, lui \\
-I (memory) & lw, sw \\
+I (memory) & lw, sw, lh, lhu, lb, lbu, sh, sb \\
+SPECIAL2 & mul \\
 I (branch) & beq, bne \\
 J & j, jal \\
 \bottomrule
@@ -108,10 +109,10 @@ Module & Function \\
 \texttt{alu\_control} & ALUOp + funct $\rightarrow$ 4-bit ALU operation \\
 \texttt{regfile} & 32$\times$32 registers, 2 read / 1 write port, \texttt{\$0}=0 \\
 \texttt{sign\_extend} & Sign- or zero-extension of the 16-bit immediate \\
-\texttt{alu} & 12 operations, zero and overflow flags \\
+\texttt{alu} & 13 operations incl. multiply, zero/overflow flags \\
 \texttt{next\_pc} & PC+4, branch target, jump target, \texttt{jr} selection \\
-\texttt{mem\_interface} & Address decoder, MMIO registers, misalignment check \\
-\texttt{dmem} & 4~KB data RAM, synchronous write, combinational read \\
+\texttt{mem\_interface} & Address decoder, MMIO, byte lanes, load extension, alignment check \\
+\texttt{dmem} & 4~KB data RAM with byte enables, combinational read \\
 \texttt{mips\_cpu} & Core integration and write-back multiplexer \\
 \texttt{mips\_top} & Core + instruction memory + memory interface \\
 \bottomrule
@@ -119,7 +120,7 @@ Module & Function \\
 \end{table}
 
 \subsection{Control Unit}
-Control is split into two levels, following~\cite{patterson}. The main decoder produces \textit{RegDst} (rt, rd or \$ra), \textit{ALUSrc}, \textit{MemToReg} (ALU, memory or PC+4), \textit{RegWrite}, \textit{MemRead}, \textit{MemWrite}, \textit{Branch}, \textit{BranchNE}, \textit{Jump}, \textit{JR}, \textit{ZeroExt} and a 3-bit \textit{ALUOp}. Because \texttt{jr} is an R-type instruction, the decoder also looks at the funct field. A 3-bit ALUOp (instead of the 2-bit field in the textbook) lets I-type logical instructions and \texttt{lui} select their ALU operation without a funct field. Unknown opcodes set an \textit{illegal} flag and are executed as NOPs.
+Control is split into two levels, following~\cite{patterson}. The main decoder produces \textit{RegDst} (rt, rd or \$ra), \textit{ALUSrc}, \textit{MemToReg} (ALU, memory or PC+4), \textit{RegWrite}, \textit{MemRead}, \textit{MemWrite}, \textit{Branch}, \textit{BranchNE}, \textit{Jump}, \textit{JR}, \textit{ZeroExt} and a 3-bit \textit{ALUOp}. Because \texttt{jr} is an R-type instruction, the decoder also looks at the funct field. A 3-bit ALUOp (instead of the 2-bit field in the textbook) lets I-type logical instructions and \texttt{lui} select their ALU operation without a funct field. Unknown opcodes set an \textit{illegal} flag and are executed as NOPs. In Phase~II ALUOp was widened to 4 bits for \texttt{mul} (opcode \texttt{0x1C}, funct \texttt{0x02}; the funct alone would clash with \texttt{srl}), and two signals were added: \textit{MemSize} (byte, half or word) and \textit{MemUnsigned} (set for \texttt{lbu}/\texttt{lhu}).
 
 \subsection{Branch and Jump Logic}
 The next PC is selected with the priority \texttt{jr} $>$ \texttt{j/jal} $>$ taken branch $>$ PC+4. A branch is taken when $(Branch \land Z) \lor (BranchNE \land \lnot Z)$, where $Z$ is the ALU zero flag after computing $rs - rt$. The branch target is $PC{+}4 + (\mathrm{sext}(imm) \ll 2)$ and the jump target is $\{PC{+}4[31{:}28], index, 00\}$. For \texttt{jal} the write-back mux writes PC+4 to \$31.
@@ -134,16 +135,18 @@ The memory interface sits between the core's data bus and the memory system. It 
 \end{itemize}
 Writes to the I/O region never reach the RAM, and accesses whose address is not word-aligned raise a \textit{misaligned} flag. The RAM writes on the clock edge and reads combinationally, which a single-cycle design needs so that \texttt{lw} can complete in the same cycle. The \texttt{\$sp} register is reset to \texttt{0x0FFC}, the top of RAM, so the stack grows down from the end of data memory.
 
+\textbf{Sub-word access (Phase~II).} The memory is little-endian. For a store, the interface copies the byte (or halfword) into every lane of the 32-bit write bus and drives a 4-bit byte enable: $BE = 0001 \ll addr[1{:}0]$ for \texttt{sb}, \texttt{0011} or \texttt{1100} for \texttt{sh}, and \texttt{1111} for \texttt{sw}. The RAM updates only the enabled bytes. For a load, the addressed word is shifted right by $8 \cdot addr[1{:}0]$ bits and the low byte or halfword is sign-extended (\texttt{lb}, \texttt{lh}) or zero-extended (\texttt{lbu}, \texttt{lhu}). Halfwords must be 2-byte aligned and words 4-byte aligned. A misaligned access raises \textit{misaligned} and the write is blocked, so memory cannot be corrupted.
+
 \subsection{Toolflow}
-A two-pass Python assembler (\texttt{scripts/mips\_asm.py}) turns assembly into hex images for \texttt{\$readmemh}. It supports labels, \texttt{.text}/\texttt{.data}/\texttt{.word}/\texttt{.space}, and the pseudo-instructions \texttt{li}, \texttt{la}, \texttt{move}, \texttt{nop}, \texttt{b}, \texttt{print} and \texttt{halt}; the last two expand to stores to the MMIO registers. A regression script (\texttt{scripts/run\_tests.py}, run by \texttt{make test}) assembles every program, simulates it with Icarus Verilog, compares the values written to \textit{IO\_OUT} against expected results and runs all unit testbenches.
+A two-pass Python assembler (\texttt{scripts/mips\_asm.py}) turns assembly into hex images for \texttt{\$readmemh}. It supports labels, \texttt{.text}/\texttt{.data}/\texttt{.word}/\texttt{.space}, and in Phase~II \texttt{.byte}/\texttt{.asciiz}/\texttt{.align} with little-endian packing, and the pseudo-instructions \texttt{li}, \texttt{la}, \texttt{move}, \texttt{nop}, \texttt{b}, \texttt{print} and \texttt{halt}; the last two expand to stores to the MMIO registers. A regression script (\texttt{scripts/run\_tests.py}, run by \texttt{make test}) assembles every program, simulates it with Icarus Verilog, compares the values written to \textit{IO\_OUT} against expected results and runs all unit testbenches.
 
-\section{Preliminary Results}
+\section{Results and Discussion}
 
-\subsection{Verification}
-Table~\ref{tab:results} summarises the regression results. The program \texttt{full\_test.s} checks each instruction class and branches to a failure handler that prints \texttt{0xBAD0\_00NN} (NN = failing test number) on any mismatch; on success it prints \texttt{0x600D}. The factorial program exercises recursion through \texttt{jal}/\texttt{jr} with a software shift-and-add multiplier, and bubble sort exercises dense load/store traffic with signed comparisons.
+\subsection{Functional Verification}
+Table~\ref{tab:results} summarises the final regression (\texttt{make test}). The programs \texttt{full\_test.s} and \texttt{byte\_test.s} check each instruction class and branch to a failure handler that prints \texttt{0xBAD0\_00NN} (NN = failing test number) on any mismatch; on success they print \texttt{0x600D}. \texttt{string\_upper.s} converts a null-terminated string to upper case in place with \texttt{lbu}/\texttt{sb}. \texttt{factorial.s} and \texttt{factorial\_hw.s} compute the same recursive factorial, the first with a software shift-and-add multiplier and the second with \texttt{mul}.
 
 \begin{table}[htbp]
-\caption{Regression Results (Icarus Verilog)}
+\caption{Final Regression Results (Icarus Verilog)}
 \label{tab:results}
 \centering
 \footnotesize
@@ -152,20 +155,23 @@ Table~\ref{tab:results} summarises the regression results. The program \texttt{f
 Test & Output on IO\_OUT & Cycles \\
 \midrule
 \texttt{full\_test} & \texttt{0x600D} (pass) & 97 \\
+\texttt{byte\_test} & \texttt{0x600D} (pass) & 66 \\
 \texttt{array\_sum} & 55 & 85 \\
 \texttt{max\_search} & 97 & 73 \\
-\texttt{factorial} & 1, 2, 6, 24, 120, 720, 5040 & 922 \\
 \texttt{bubble\_sort} & $-7$, 0, 3, 9, 15, 22, 41, 88 & 364 \\
+\texttt{string\_upper} & len 18, checksum 1218 & 216 \\
+\texttt{factorial} (software mul) & 1, 2, 6, \dots, 5040 & 922 \\
+\texttt{factorial\_hw} (\texttt{mul}) & 1, 2, 6, \dots, 5040 & 357 \\
 \midrule
-Unit tests & ALU (15), RegFile (66), Control (14), & all pass \\
- & Next-PC (7), Memory interface & \\
+Unit tests & ALU (20), RegFile (66), Control (22), & all pass \\
+ & Next-PC (7), Memory interface (sub-word) & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Because the design is single-cycle, the number of cycles equals the number of instructions executed in every program (CPI~=~1). To check that the self-test can actually detect faults, we injected a bug that made \texttt{sra} behave as a logical shift. The program then printed \texttt{0xBAD0\_0005}, pointing to the shift test.
+In every program the cycle count equals the number of instructions executed (CPI~=~1). Two mutation experiments check that the self-tests can detect faults. Making \texttt{sra} behave as a logical shift makes \texttt{full\_test} print \texttt{0xBAD0\_0005}. Removing the sign extension from \texttt{lb} makes \texttt{byte\_test} print \texttt{0xBAD0\_0001}.
 
-Fig.~\ref{fig:wave} shows the first 26 cycles of \texttt{array\_sum}. Cycles 0--5 set up the array pointer and length (with \textit{MemRead} high for \texttt{lw} in cycle 3), and from cycle 6 the loop body repeats every seven cycles; the jump at PC \texttt{0x34} returns to the loop test at \texttt{0x1C}.
+Fig.~\ref{fig:wave} shows the first 26 cycles of \texttt{array\_sum}. Cycles 0--5 set up the array pointer and length, with \textit{MemRead} high for the \texttt{lw} in cycle 3. From cycle 6 the loop body repeats every seven cycles, and the jump at PC \texttt{0x34} returns to the loop test at \texttt{0x1C}.
 
 \begin{figure}[htbp]
 \centering
@@ -174,19 +180,62 @@ Fig.~\ref{fig:wave} shows the first 26 cycles of \texttt{array\_sum}. Cycles 0--
 \label{fig:wave}
 \end{figure}
 
-\subsection{Synthesis}
-The core (datapath and control, excluding the memory arrays, which map to block RAM) was synthesised with Yosys for a Xilinx 7-series target. It uses about 1{,}660 LUTs, 1{,}024 flip-flops, 375 wide multiplexers (MUXF7/F8) and 38 CARRY4 chains. The flip-flops are the 32$\times$32 register file; because it has a synchronous reset, it is not inferred as distributed RAM. The critical path is the \texttt{lw} path: instruction memory $\rightarrow$ register file $\rightarrow$ ALU adder $\rightarrow$ data memory $\rightarrow$ write-back mux $\rightarrow$ register file setup.
+\subsection{Performance Study}
+The system testbench counts executed instructions by class, and \texttt{scripts/perf\_analysis.py} uses these counts to compare our single-cycle design with a multi-cycle design and an ideal five-stage pipeline running the same programs. We use the standard stage delays from~\cite{patterson}: instruction memory 200~ps, register read 100~ps, ALU 200~ps, data memory 200~ps and register write 100~ps. The single-cycle clock must fit the slowest instruction, \texttt{lw}, giving 800~ps. The multi-cycle and pipelined clocks fit the slowest stage, giving 200~ps. Multi-cycle CPIs are 5 for loads, 4 for stores, ALU and \texttt{mul} instructions, and 3 for branches and jumps. The ideal pipeline has CPI~1 plus four fill cycles and no hazard stalls.
+
+\begin{table}[htbp]
+\caption{Instruction Mix and Execution Time (ns)}
+\label{tab:perf}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Program & Instr. & Ld/St & Br/J & Single & Multi (CPI) & Pipe \\
+\midrule
+array\_sum & 85 & 14 & 21 & 68.0 & 66.0 (3.88) & 17.8 \\
+max\_search & 73 & 12 & 22 & 58.4 & 55.8 (3.82) & 15.4 \\
+bubble\_sort & 364 & 104 & 123 & 291.2 & 279.6 (3.84) & 73.6 \\
+factorial & 922 & 107 & 355 & 737.6 & 675.0 (3.66) & 185.2 \\
+factorial\_hw & 357 & 107 & 91 & 285.6 & 275.8 (3.86) & 72.2 \\
+string\_upper & 216 & 38 & 69 & 172.8 & 163.0 (3.77) & 44.0 \\
+\midrule
+Total (8 prog.) & & & & 1744.0 & 1641.4 & 442.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{perf_comparison.png}
+\caption{Execution time of each benchmark on the three organisations.}
+\label{fig:perf}
+\end{figure}
+
+Table~\ref{tab:perf} and Fig.~\ref{fig:perf} lead to three observations.
+
+\textit{1) Multi-cycle barely helps.} The average multi-cycle CPI across our programs is about 3.8, so the multi-cycle clock must be at least $800/3.8 \approx 210$~ps to win. Its 200~ps clock is only slightly faster, and over all eight programs it is just 1.06$\times$ faster. It runs slowest relative to its potential on load-heavy code, because each \texttt{lw} takes five short cycles, which is as long as one single-cycle period. It does best on branch- and jump-heavy code such as \texttt{factorial} (CPI 3.66), because branches finish in three cycles.
+
+\textit{2) Pipelining is the real win.} An ideal pipeline keeps CPI near 1 while using the short 200~ps clock, so it is 3.94$\times$ faster than the single-cycle design, close to the 4$\times$ ratio of the two clock periods. A real pipeline would lose some of this to load-use and branch hazards, so this is an upper bound.
+
+\textit{3) Hardware support beats clock tricks.} Replacing the software multiply loop with one \texttt{mul} instruction cuts \texttt{factorial} from 922 to 357 instructions, a 2.58$\times$ speed-up on the same clock. Branches and jumps fall from 355 to 91, because the shift-and-add loop disappears. Adding the right instruction helped more than switching to a multi-cycle organisation.
+
+\subsection{Synthesis and Critical Path}
+The core was synthesised with Yosys for a Xilinx 7-series target. It uses about 1{,}660 LUTs, 1{,}024 flip-flops, 453 wide multiplexers (MUXF7/F8), 38 CARRY4 chains and 3 DSP48E1 blocks. The 32$\times$32 multiplier maps entirely to the DSP blocks, so adding \texttt{mul} did not increase the LUT count. The flip-flops are the register file; it has a synchronous reset, so it is not inferred as distributed RAM, and removing that reset would save roughly 1{,}000 flip-flops. In a generic gate-level mapping, the longest combinational path is 80 gate levels with the multiplier and 79 without it. That path runs from the instruction bus through the register-file read multiplexers, the ALU subtractor and zero detection and the branch-target selection, to the PC. The multiplier adds about 3{,}000 gates (+54\%) but does not lengthen the gate-level critical path. On an FPGA, however, the combinational DSP multiply would sit on the single-cycle path and limit the clock. That is the main reason pipelined processors give multiplication several cycles or a separate unit.
+
+\subsection{Limitations}
+The design has no pipeline, caches, exceptions or interrupts. Overflow is flagged but not trapped, \texttt{mult}/\texttt{div} with HI/LO registers are not implemented, and the memories are combinational-read models that a real FPGA would replace with synchronous block RAM.
 
 \section{Individual Contributions}
 \begin{itemize}
-\item \textbf{Keshav Rajput (Team Lead):} overall architecture and memory map; main control unit and ALU-control decoder; core integration (\texttt{mips\_cpu}, \texttt{mips\_top}) and write-back logic; system and control-unit testbenches; Yosys synthesis; repository setup; report.
-\item \textbf{Mayank Gupta:} ALU with flags, 32$\times$32 register file and sign/zero-extension unit, with their unit testbenches (ALU and register file).
-\item \textbf{Gaurav Meena:} program counter, instruction memory, data memory and the memory interface (address decoder, MMIO registers and misalignment detection), with the memory-interface testbench.
-\item \textbf{Aaryan Gera:} branch/jump next-PC logic and its testbench; MIPS assembler; the five test programs; regression runner and waveform plotting scripts.
+\item \textbf{Keshav Rajput (Team Lead):} architecture and memory map; main control unit and ALU-control decoder, including the Phase~II decoding of byte/half memory operations and \texttt{mul}; core integration (\texttt{mips\_cpu}, \texttt{mips\_top}) and write-back logic; control-unit and system testbenches, including the instruction-mix counters; synthesis and critical-path analysis; repository and reports.
+\item \textbf{Mayank Gupta:} ALU with flags and, in Phase~II, the multiply operation; 32$\times$32 register file; sign/zero-extension unit; ALU and register-file testbenches.
+\item \textbf{Gaurav Meena:} program counter; instruction and data memory, with byte enables added in Phase~II; memory interface with address decoding, MMIO, Phase~II byte-lane steering, load extension and alignment checking; memory-interface testbench.
+\item \textbf{Aaryan Gera:} branch/jump next-PC logic and its testbench; MIPS assembler, extended in Phase~II with sub-word, \texttt{mul} and string directives; all eight test programs; regression runner, waveform plotter and the performance-analysis script.
 \end{itemize}
 
-\section{Conclusion and Phase II Plan}
-A complete single-cycle MIPS32 processor with a memory-mapped memory interface has been implemented and verified, and it runs recursive and memory-intensive programs correctly. Phase~II will add static timing estimates and maximum clock frequency on an FPGA target, a performance comparison of the benchmark programs, byte and halfword loads/stores (\texttt{lb}, \texttt{lbu}, \texttt{sb}) with byte enables in the memory interface, and a final report with full results and discussion.
+\section{Conclusion}
+We designed, implemented and verified a single-cycle MIPS32 processor with a memory-mapped memory interface in Verilog. The final core executes 34 instructions in one cycle each, including byte and halfword memory access and hardware multiplication, and correctly runs eight test programs covering arithmetic, recursion, sorting and string processing. The performance study confirms the main trade-off of the single-cycle organisation. It is simple and has CPI~=~1, but its clock is set by the slowest instruction. On our measured instruction mix, a multi-cycle design gains only about 6\%, while pipelining could give close to a 4$\times$ speed-up. Adding a dedicated instruction (\texttt{mul}) gave a 2.58$\times$ speed-up on factorial without changing the clock. Natural next steps are a five-stage pipeline with forwarding and hazard detection, synchronous block-RAM memories with a cache in front of the memory interface, and exception support for overflow and misaligned accesses.
 
 \begin{thebibliography}{00}
 \bibitem{patterson} D. A. Patterson and J. L. Hennessy, \textit{Computer Organization and Design: The Hardware/Software Interface}, 5th ed. Waltham, MA, USA: Morgan Kaufmann, 2014.
