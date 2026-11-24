@@ -8,7 +8,7 @@
 `include "defines.vh"
 
 module alu_control (
-    input  wire [2:0] alu_op,
+    input  wire [3:0] alu_op,
     input  wire [5:0] funct,
     output reg  [3:0] alu_ctrl
 );
@@ -21,6 +21,7 @@ module alu_control (
             `ALUOP_XOR : alu_ctrl = `ALU_XOR;
             `ALUOP_SLT : alu_ctrl = `ALU_SLT;
             `ALUOP_LUI : alu_ctrl = `ALU_LUI;
+            `ALUOP_MUL : alu_ctrl = `ALU_MUL;   // Phase II
             `ALUOP_FUNCT: begin
                 case (funct)
                     `F_ADD, `F_ADDU : alu_ctrl = `ALU_ADD;
