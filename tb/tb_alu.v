@@ -36,6 +36,12 @@ module tb_alu;
         check(`ALU_SRL, 32'd0, 32'h80000000, 31, 32'h1, 0);
         check(`ALU_SRA, 32'd0, 32'h80000000, 4, 32'hF8000000, 0);
         check(`ALU_LUI, 32'd0, 32'h0000ABCD, 0, 32'hABCD0000, 0);
+        // ---- Phase II: multiply (low 32 bits)
+        check(`ALU_MUL, 32'd12, 32'd11, 0, 32'd132, 0);
+        check(`ALU_MUL, 32'hFFFFFFFF, 32'd7, 0, 32'hFFFFFFF9, 0);     // -1 * 7 = -7
+        check(`ALU_MUL, 32'hFFFFFFFD, 32'hFFFFFFFB, 0, 32'd15, 0);     // -3 * -5 = 15
+        check(`ALU_MUL, 32'h00010000, 32'h00010000, 0, 32'd0, 0);      // 2^32 -> low bits 0
+        check(`ALU_MUL, 32'd5040, 32'd8, 0, 32'd40320, 0);             // 8!
         $display("tb_alu: %0d tests, %0d errors -> %s", tests, errors, errors ? "FAIL" : "PASS");
         $finish;
     end
