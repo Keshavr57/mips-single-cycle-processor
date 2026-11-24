@@ -18,12 +18,15 @@ module mips_top #(
     wire [31:0] imem_addr, imem_data;
     wire [31:0] dmem_addr, dmem_wdata, dmem_rdata;
     wire        dmem_read, dmem_write, misaligned;
+    wire [1:0]  dmem_size;
+    wire        dmem_unsigned;
 
     mips_cpu u_cpu (
         .clk(clk), .rst(rst), .halt(halted),
         .imem_addr(imem_addr), .imem_data(imem_data),
         .dmem_addr(dmem_addr), .dmem_wdata(dmem_wdata),
         .dmem_read(dmem_read), .dmem_write(dmem_write),
+        .dmem_size(dmem_size), .dmem_unsigned(dmem_unsigned),
         .dmem_rdata(dmem_rdata),
         .dbg_pc(pc), .dbg_instr(), .dbg_reg_write(), .dbg_wa(), .dbg_wd(),
         .dbg_illegal()
@@ -37,6 +40,7 @@ module mips_top #(
         .clk(clk), .rst(rst),
         .addr(dmem_addr), .wdata(dmem_wdata),
         .mem_read(dmem_read), .mem_write(dmem_write),
+        .size(dmem_size), .is_unsigned(dmem_unsigned),
         .rdata(dmem_rdata),
         .io_out(io_out), .io_out_valid(io_out_valid),
         .halted(halted), .misaligned(misaligned)

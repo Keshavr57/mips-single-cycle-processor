@@ -21,6 +21,8 @@ module mips_cpu (
     output wire [31:0] dmem_wdata,
     output wire        dmem_read,
     output wire        dmem_write,
+    output wire [1:0]  dmem_size,       // Phase II: byte / half / word
+    output wire        dmem_unsigned,   // Phase II: zero-extend loads
     input  wire [31:0] dmem_rdata,
     // debug / observation
     output wire [31:0] dbg_pc,
@@ -55,14 +57,17 @@ module mips_cpu (
     wire [1:0] reg_dst, mem_to_reg;
     wire       alu_src, reg_write, mem_read, mem_write;
     wire       branch, branch_ne, jump, jr, zero_ext, illegal;
-    wire [2:0] alu_op;
+    wire [3:0] alu_op;
+    wire [1:0] mem_size;
+    wire       mem_unsigned;
 
     control_unit u_ctrl (
         .opcode(opcode), .funct(funct),
         .reg_dst(reg_dst), .alu_src(alu_src), .mem_to_reg(mem_to_reg),
         .reg_write(reg_write), .mem_read(mem_read), .mem_write(mem_write),
         .branch(branch), .branch_ne(branch_ne), .jump(jump), .jr(jr),
-        .zero_ext(zero_ext), .alu_op(alu_op), .illegal(illegal)
+        .zero_ext(zero_ext), .alu_op(alu_op),
+        .mem_size(mem_size), .mem_unsigned(mem_unsigned), .illegal(illegal)
     );
 
     // destination register mux
@@ -112,6 +117,8 @@ module mips_cpu (
     assign dmem_wdata = rd2;
     assign dmem_read  = mem_read;
     assign dmem_write = mem_write & ~halt;
+    assign dmem_size     = mem_size;
+    assign dmem_unsigned = mem_unsigned;
 
     // ------------------------------------------------------------ write-back
     reg [31:0] wb_mux;
