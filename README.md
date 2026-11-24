@@ -2,11 +2,13 @@
 
 **Modern Computer Architecture (MCA) — Project 2** · B.Tech CS&AI · Newton School of Technology, Rishihood University
 
-A 32-bit single-cycle MIPS processor written in synthesizable Verilog. It runs 27 MIPS32 instructions and includes a **memory interface** that decodes every load/store address and sends it to a 4 KB data RAM or to memory-mapped I/O registers.
+A 32-bit single-cycle MIPS processor written in synthesizable Verilog. It runs **34 MIPS32 instructions** (including byte/halfword loads and stores and a hardware `mul`) and includes a **memory interface** that decodes every load/store address, sends it to a 4 KB data RAM or to memory-mapped I/O registers, and handles byte lanes, byte enables and alignment.
 
 | | |
 |---|---|
+| 📄 **Final IEEE report (Phase II)** | [`report/IEEE_Report_Final.pdf`](report/IEEE_Report_Final.pdf) |
 | 📄 Phase I IEEE report | [`report/IEEE_Report_Phase1.pdf`](report/IEEE_Report_Phase1.pdf) |
+| 📊 Performance study | [`docs/perf_results.md`](docs/perf_results.md) |
 | 🎥 Prototype demo video |https://drive.google.com/drive/folders/1rhn3lwi_-24imqKGfuRqZ_glGERA07Sn?usp=sharing |
 | 🧭 Datapath diagram | [`docs/images/datapath.png`](docs/images/datapath.png) |
 
@@ -25,12 +27,14 @@ A 32-bit single-cycle MIPS processor written in synthesizable Verilog. It runs 2
 
 Each instruction is fetched, decoded, executed, accesses memory and writes back in **one clock cycle (CPI = 1)**.
 
-### Instruction set (27)
+### Instruction set (34)
 
 | Type | Instructions |
 |---|---|
 | R | `add addu sub subu and or xor nor slt sltu sll srl sra jr` |
 | I | `addi addiu andi ori xori slti lui lw sw beq bne` |
+| I (Phase II) | `lb lbu lh lhu sb sh` |
+| SPECIAL2 (Phase II) | `mul` |
 | J | `j jal` |
 
 ### Memory map (memory interface)
@@ -68,7 +72,7 @@ make synth                    # Yosys synthesis -> synth/report_*.txt
 python3 scripts/mips_asm.py programs/array_sum.s -o programs/build   # assemble only
 ```
 
-## Results (Phase I)
+## Results
 
 | Program | What it tests | Output | Cycles |
 |---|---|---|---|
@@ -77,11 +81,24 @@ python3 scripts/mips_asm.py programs/array_sum.s -o programs/build   # assemble 
 | `max_search.s` | signed compare, slt | 97 | 73 |
 | `factorial.s` | recursion, jal/jr, stack | 1 2 6 24 120 720 5040 | 922 |
 | `bubble_sort.s` | nested loops, lw/sw | -7 0 3 9 15 22 41 88 | 364 |
+| `byte_test.s` *(II)* | lb/lbu/lh/lhu/sb/sh/mul, self-checking | `0x600D` (pass) | 66 |
+| `string_upper.s` *(II)* | string to upper case with lbu/sb | 18, 1218 | 216 |
+| `factorial_hw.s` *(II)* | factorial with hardware `mul` | 1 2 6 24 120 720 5040 | 357 |
 
-Unit tests: ALU (15), register file (66), control unit (14), next-PC (7), memory interface: **all pass**.
+Unit tests: ALU (20), register file (66), control unit (22), next-PC (7), memory interface incl. sub-word: **all pass**.
 Mutation check: breaking `sra` makes `full_test` report `0xBAD00005` (the shift test).
 
-**Synthesis (Yosys, Xilinx 7-series, core only):** ~1,660 LUTs, 1,024 FFs (register file), 38 CARRY4.
+**Synthesis (Yosys, Xilinx 7-series, core only):** ~1,660 LUTs, 1,024 FFs (register file), 38 CARRY4, 3 DSP48E1 (multiplier). Critical path ≈ 80 gate levels (PC → register file → ALU → zero → next PC).
+
+### Phase II performance study
+
+| | Single-cycle (ours) | Multi-cycle | Ideal 5-stage pipeline |
+|---|---|---|---|
+| Total time, 8 programs | 1744 ns | 1641 ns (1.06× faster, avg CPI ≈ 3.8) | 442 ns (3.94× faster) |
+
+Hardware `mul` vs software multiply (factorial): **922 → 357 instructions, 2.58× faster.**
+
+![Performance](docs/images/perf_comparison.png)
 
 ![Waveform](docs/images/wave_array_sum.png)
 
