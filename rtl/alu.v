@@ -2,7 +2,7 @@
 // alu.v - 32-bit Arithmetic Logic Unit
 // Owner : Mayank Gupta
 // Supports add, sub, and, or, xor, nor, slt (signed), sltu, logical/arithmetic
-// shifts (by shamt) and lui. Produces `zero` for BEQ/BNE and a signed
+// shifts (by shamt), lui and (Phase II) 32x32 multiply (low 32 bits). Produces `zero` for BEQ/BNE and a signed
 // `overflow` flag for add/sub (reported, not trapped).
 // ============================================================================
 `include "defines.vh"
@@ -40,6 +40,7 @@ module alu (
             `ALU_SRL : result = b >> shamt;
             `ALU_SRA : result = $signed(b) >>> shamt;
             `ALU_LUI : result = {b[15:0], 16'h0000};
+            `ALU_MUL : result = a * b;               // Phase II: mul rd, rs, rt
             default  : result = 32'd0;
         endcase
     end
