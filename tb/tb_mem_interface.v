@@ -4,10 +4,11 @@
 module tb_mem_interface;
     reg clk = 0, rst = 1, rd = 0, wr = 0;
     reg [31:0] addr = 0, wdata = 0;
+    reg [1:0]  size = 2'b10; reg uns = 0;
     wire [31:0] rdata, io_out; wire io_v, halted, mis;
     integer errors = 0, i;
     mem_interface dut (.clk(clk), .rst(rst), .addr(addr), .wdata(wdata), .mem_read(rd),
-        .mem_write(wr), .rdata(rdata), .io_out(io_out), .io_out_valid(io_v),
+        .mem_write(wr), .size(size), .is_unsigned(uns), .rdata(rdata), .io_out(io_out), .io_out_valid(io_v),
         .halted(halted), .misaligned(mis));
     always #5 clk = ~clk;
 
@@ -41,10 +42,44 @@ module tb_mem_interface;
         // misaligned detection
         addr = 32'h2; rd = 1; #1 if (!mis) begin errors = errors + 1; $display("FAIL misaligned"); end
         rd = 0;
+        // ---------------- Phase II: byte / halfword access ----------------
+        size = `MEM_WORD; write(32'h100, 32'h11223344);
+        size = `MEM_BYTE; uns = 0;
+        expect_read(32'h100, 32'h00000044);                 // byte 0 (little-endian)
+        expect_read(32'h103, 32'h00000011);                 // byte 3
+        write(32'h101, 32'h000000F0);                       // sb to byte 1
+        size = `MEM_WORD; expect_read(32'h100, 32'h1122F044);
+        size = `MEM_BYTE; uns = 0; expect_read(32'h101, 32'hFFFFFFF0);   // lb sign-extends
+        uns = 1;                   expect_read(32'h101, 32'h000000F0);   // lbu zero-extends
+        size = `MEM_HALF; uns = 0;
+        write(32'h102, 32'h0000ABCD);                       // sh to upper half
+        size = `MEM_WORD; expect_read(32'h100, 32'hABCDF044);
+        size = `MEM_HALF; uns = 0; expect_read(32'h102, 32'hFFFFABCD);   // lh
+        uns = 1;                   expect_read(32'h102, 32'h0000ABCD);   // lhu
+        uns = 0;                   expect_read(32'h100, 32'hFFFFF044);   // lh lower half
+        // misaligned halfword store must be blocked
+        addr = 32'h101; wdata = 32'h5555; size = `MEM_HALF; wr = 1; #1;
+        if (!mis) begin errors = errors + 1; $display("FAIL half misaligned flag"); end
+        @(posedge clk); #1 wr = 0;
+        size = `MEM_WORD; expect_read(32'h100, 32'hABCDF044);
         // halt register
+        size = `MEM_WORD; uns = 0;
         write(`IO_HALT_ADDR, 0);
         if (!halted) begin errors = errors + 1; $display("FAIL halt"); end
         $display("tb_mem_interface: %0d errors -> %s", errors, errors ? "FAIL" : "PASS");
         $finish;
     end
 endmodule
+
+// ============================================================================
+// Testbench Summary (Owner: Gaurav Meena):
+// This self-checking testbench thoroughly verifies the Memory Interface (mem_interface):
+// 1. Verifies 32-bit aligned reads and writes across Data RAM boundaries.
+// 2. Verifies Memory-Mapped I/O functionality (IO_OUT strobe, IO_CYCLES increment,
+//    and IO_HALT assertion) ensuring MMIO operations do not corrupt RAM word 0.
+// 3. Verifies Phase II sub-word operations:
+//    - Little-endian byte extraction (lb, lbu) and sign/zero extension.
+//    - Sub-word byte/halfword stores (sb, sh) modifying only targeted byte lanes.
+//    - Alignment verification: detects misaligned word and halfword accesses and
+//      verifies that misaligned store operations are safely blocked.
+// ============================================================================
