@@ -10,6 +10,8 @@ Converts a small MIPS assembly program into $readmemh hex files:
 Supported instructions
     R : add addu sub subu and or xor nor slt sltu sll srl sra jr
     I : addi addiu andi ori xori slti lui lw sw beq bne
+        lb lbu lh lhu sb sh                     (Phase II)
+    S2: mul rd, rs, rt                          (Phase II, SPECIAL2)
     J : j jal
 Pseudo-instructions
     nop, move rd,rs, li rt,imm32, la rt,label, b label,
@@ -17,6 +19,7 @@ Pseudo-instructions
     halt       (store to the IO_HALT port 0xFFFC)
 Directives
     .text  .data  .word v1, v2, ...  .space nbytes
+    .byte b1, b2, ...   .asciiz "text"          (Phase II, little-endian packing)
 
 Usage:  python3 scripts/mips_asm.py programs/array_sum.s -o programs/build
 """
@@ -37,9 +40,11 @@ R_FUNCT = {"add": 0x20, "addu": 0x21, "sub": 0x22, "subu": 0x23, "and": 0x24,
 SHIFT_FUNCT = {"sll": 0x00, "srl": 0x02, "sra": 0x03}
 I_OP = {"addi": 0x08, "addiu": 0x09, "slti": 0x0A, "andi": 0x0C, "ori": 0x0D,
         "xori": 0x0E}
-MEM_OP = {"lw": 0x23, "sw": 0x2B}
+MEM_OP = {"lw": 0x23, "sw": 0x2B,
+          "lb": 0x20, "lh": 0x21, "lbu": 0x24, "lhu": 0x25, "sb": 0x28, "sh": 0x29}
 BR_OP = {"beq": 0x04, "bne": 0x05}
 J_OP = {"j": 0x02, "jal": 0x03}
+SPECIAL2 = {"mul": (0x1C, 0x02)}
 
 IO_OUT, IO_HALT = 0xFFF0, 0xFFFC
 
@@ -90,11 +95,21 @@ def expand_pseudo(mn, ops):
     return [(mn, ops)]
 
 
+def pack_bytes(data):
+    """Turn the byte list of the .data section into little-endian words."""
+    words = []
+    for i in range(0, len(data), 4):
+        chunk = data[i:i + 4] + [0] * (4 - len(data[i:i + 4]))
+        words.append(chunk[0] | chunk[1] << 8 | chunk[2] << 16 | chunk[3] << 24)
+    return words
+
+
 def parse(src):
     text, data, labels = [], [], {}
+    # data is a list of bytes (int) or pending 32-bit words ('word', lineno, token)
     section = "text"
     for lineno, raw in enumerate(src.splitlines(), 1):
-        line = raw.split("#")[0].strip()
+        line = re.sub(r'#(?=(?:[^"]*"[^"]*")*[^"]*$).*', "", raw).strip()
         while True:
             m = re.match(r"^([A-Za-z_][\w]*)\s*:(.*)$", line)
             if not m:
@@ -102,7 +117,7 @@ def parse(src):
             name = m.group(1)
             if name in labels:
                 raise AsmError(f"line {lineno}: duplicate label '{name}'")
-            labels[name] = len(text) * 4 if section == "text" else len(data) * 4
+            labels[name] = len(text) * 4 if section == "text" else len(data)
             line = m.group(2).strip()
         if not line:
             continue
@@ -115,9 +130,23 @@ def parse(src):
             elif d == ".data":
                 section = "data"
             elif d == ".word":
-                data.extend((lineno, v) for v in split_ops(arg))
+                while len(data) % 4:            # .word is always word-aligned
+                    data.append(0)
+                for v in split_ops(arg):
+                    data.extend([("word", lineno, v), None, None, None])
+            elif d == ".byte":
+                data.extend(num(v) & 0xFF for v in split_ops(arg))
+            elif d == ".asciiz":
+                m = re.match(r'^"(.*)"$', arg.strip())
+                if not m:
+                    raise AsmError(f"line {lineno}: .asciiz needs a quoted string")
+                txt = m.group(1).encode().decode("unicode_escape")
+                data.extend(list(txt.encode("latin-1")) + [0])
+            elif d == ".align":
+                while len(data) % (1 << num(arg)):
+                    data.append(0)
             elif d == ".space":
-                data.extend((lineno, "0") for _ in range((num(arg) + 3) // 4))
+                data.extend([0] * num(arg))
             else:
                 raise AsmError(f"line {lineno}: unknown directive {d}")
             continue
@@ -155,6 +184,10 @@ def encode(pc, mn, ops, labels, lineno):
     if mn in SHIFT_FUNCT:
         rd, rt, sh = reg(ops[0]), reg(ops[1]), value(ops[2], labels)
         return (rt << 16) | (rd << 11) | ((sh & 31) << 6) | SHIFT_FUNCT[mn]
+    if mn in SPECIAL2:
+        rd, rs, rt = reg(ops[0]), reg(ops[1]), reg(ops[2])
+        op, fn = SPECIAL2[mn]
+        return (op << 26) | (rs << 21) | (rt << 16) | (rd << 11) | fn
     if mn == "jr":
         return (reg(ops[0]) << 21) | 0x08
     if mn in I_OP:
@@ -191,7 +224,16 @@ def assemble(src):
         w = encode(pc, mn, ops, labels, lineno) & 0xFFFFFFFF
         words.append(w)
         listing.append(f"{pc:08x}: {w:08x}    {mn:6s} {', '.join(ops):28s} # {raw}")
-    dwords = [value(v, labels) & 0xFFFFFFFF for _, v in data]
+    raw = []
+    for b in data:
+        if b is None:
+            continue
+        if isinstance(b, tuple):
+            w = value(b[2], labels) & 0xFFFFFFFF
+            raw.extend([w & 0xFF, (w >> 8) & 0xFF, (w >> 16) & 0xFF, (w >> 24) & 0xFF])
+        else:
+            raw.append(b)
+    dwords = pack_bytes(raw)
     return words, dwords, listing
 
 
