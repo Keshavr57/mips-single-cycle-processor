@@ -1,13 +1,16 @@
-# synth.ys - Yosys generic synthesis of the CPU core (Owner: Keshav Rajput)
-# Memories are synthesised separately on an FPGA as block RAM; here we
-# synthesise the core (datapath + control) and the memory interface logic.
+# synth.ys - Yosys synthesis of the CPU core (Owner: Keshav Rajput)
+# Memories map to block RAM on an FPGA, so here we synthesise the core
+# (datapath + control). Phase II adds the multiplier and a logic-depth
+# (critical path) report.
 read_verilog -I rtl rtl/pc.v rtl/regfile.v rtl/alu.v rtl/sign_extend.v rtl/alu_control.v rtl/control_unit.v rtl/next_pc.v rtl/mips_cpu.v
 hierarchy -check -top mips_cpu
 synth -top mips_cpu -flatten
 abc -g AND,NAND,OR,NOR,XOR,XNOR,MUX
 opt_clean
 tee -o synth/report_stat.txt stat
-# FPGA estimate (Xilinx 7-series LUT mapping)
+# longest combinational path in gate levels (critical path)
+tee -o synth/report_logic_depth.txt ltp -noff
+# FPGA estimate (Xilinx 7-series LUT / DSP mapping)
 design -reset
 read_verilog -I rtl rtl/pc.v rtl/regfile.v rtl/alu.v rtl/sign_extend.v rtl/alu_control.v rtl/control_unit.v rtl/next_pc.v rtl/mips_cpu.v
 synth_xilinx -top mips_cpu -flatten

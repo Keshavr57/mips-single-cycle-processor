@@ -3,24 +3,24 @@
 
 === mips_cpu ===
 
-   Number of wires:               4416
-   Number of wire bits:           6688
-   Number of public wires:         133
-   Number of public wire bits:    2405
+   Number of wires:               7438
+   Number of wire bits:           9716
+   Number of public wires:         139
+   Number of public wire bits:    2417
    Number of memories:               0
    Number of memory bits:            0
    Number of processes:              0
-   Number of cells:               5476
-     $_AND_                        645
+   Number of cells:               8495
+     $_AND_                       1334
      $_MUX_                       2326
-     $_NAND_                       753
-     $_NOR_                         67
-     $_NOT_                         90
-     $_OR_                         369
+     $_NAND_                      2070
+     $_NOR_                         81
+     $_NOT_                         86
+     $_OR_                         354
      $_SDFFCE_PN0P_               1014
      $_SDFFCE_PN1P_                 10
      $_SDFFE_PP0N_                  30
      $_SDFFE_PP0P_                   2
-     $_XNOR_                       139
-     $_XOR_                         31
+     $_XNOR_                       218
+     $_XOR_                        970
 
