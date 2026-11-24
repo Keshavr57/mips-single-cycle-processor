@@ -17,6 +17,10 @@ EXPECTED = {
     "max_search":  [97],
     "factorial":   [1, 2, 6, 24, 120, 720, 5040, 5040],
     "bubble_sort": [-7, 0, 3, 9, 15, 22, 41, 88],
+    # ---- Phase II
+    "byte_test":    [0x600D],
+    "string_upper": [18, 1218, 0x4C4C4548],
+    "factorial_hw": [1, 2, 6, 24, 120, 720, 5040, 5040],
 }
 UNIT = ["tb_alu", "tb_regfile", "tb_control_unit", "tb_next_pc", "tb_mem_interface"]
 
